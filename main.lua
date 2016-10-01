@@ -10,8 +10,9 @@ Y_SCALE = 0.5
 HIGH_FIVE_THRUST = 2000
 GRAVITY = 4750
 
-JedMonster = {}
+emitters = {}
 
+JedMonster = {}
 function JedMonster:new (o, x, y, speed, img)
   o = o or {}
   setmetatable(o, self)
@@ -27,17 +28,9 @@ function JedMonster:move(dx, dy)
   self.x, self.y, cols, len = world:move(self, self.x + dx, self.y + dy)
 end
 
-function JedMonster:move_x(dx)
-  self.x, self.y, cols, len = world:move(self, self.x + dx, self.y)
-end
-
-function JedMonster:move_y(dy)
-  self.x, self.y, cols, len = world:move(self, self.x, self.y + dy)
-end
-
 JedHand = {}
 function JedHand:new(o, x, y, speed)
-  o = o or {}
+  local o = o or {}
   setmetatable(o, self)
   self.__index = self
   self.x = x or 500
@@ -45,19 +38,39 @@ function JedHand:new(o, x, y, speed)
   self.speed = speed or 150
   self.img = love.graphics.newImage("assets/highfive_right.png")
   self.x_velocity = 0
+  self.active_collisions = false
   return o
 end
 
 function JedHand:move(dx, dy)
   self.x, self.y, cols, len = world:move(self, self.x + dx, self.y + dy)
+  if len > 0 then
+    slap:play()
+    for _, col in ipairs(cols) do
+      if self.active_collisions then
+        print("have collided with " .. tostring(col.other))
+      else
+        print("have not collided with " .. tostring(col.other))
+        local emitter = JedEmitter:new(nil, col["touch"].x, col["touch"].y)
+        self.active_collisions = true
+        table.insert(emitters, emitter)
+      end
+    end
+  else
+    self.active_collisions = false
+  end
 end
 
-function JedHand:move_x(dx)
-  self.x, self.y, cols, len = world:move(self, self.x + dx, self.y)
+function JedHand:addCollision(item)
+  self.active_collisions[item] = true
 end
 
-function JedHand:move_y(dy)
-  self.x, self.y, cols, len = world:move(self, self.x, self.y + dy)
+function JedHand:removeCollision(item)
+  self.active_collisions[item] = false
+end
+
+function JedHand:isCollided(item)
+  return self.active_collisions[item] ~= nil
 end
 
 
@@ -78,14 +91,6 @@ function Player:move(dx, dy)
   self.x, self.y, cols, len = world:move(self, self.x + dx, self.y + dy)
 end
 
-function Player:move_x(dx)
-  self.x, self.y, cols, len = world:move(self, self.x + dx, self.y)
-end
-
-function Player:move_y(dy)
-  self.x, self.y, cols, len = world:move(self, self.x, self.y + dy)
-end
-
 PlayerHand = {}
 function PlayerHand:new(o, x, y, speed)
   o = o or {}
@@ -103,13 +108,31 @@ function PlayerHand:move(dx, dy)
   self.x, self.y, cols, len = world:move(self, self.x + dx, self.y + dy)
 end
 
-function PlayerHand:move_x(dx)
-  self.x, self.y, cols, len = world:move(self, self.x + dx, self.y)
+
+JedEmitter = { x = 0, y = 0 }
+function JedEmitter:new (o,x,y)
+  o = o or {}
+  setmetatable(o, self)
+  self.__index = self
+  self.x = x or math.random(800)
+  self.y = y or math.random(600)
+  local img = love.graphics.newImage('assets/jed.jpeg')
+  self.emitter = love.graphics.newParticleSystem(img, 32)
+  self.emitter:setAreaSpread("none",0,0)
+  self.emitter:setColors(255, 255, 255, 255, 255, 255, 255, 0)
+  self.emitter:setDirection(-1.6)
+  self.emitter:setEmissionRate(300)
+  self.emitter:setEmitterLifetime(1.1)
+  self.emitter:setLinearAcceleration(-500, 5000, 500, 0)
+  self.emitter:setOffset(16, 16)
+  self.emitter:setParticleLifetime(1, 3)
+  self.emitter:setSizeVariation(0)
+  self.emitter:setSizes(1)
+  self.emitter:setSpeed(1500, 0)
+  self.emitter:setSpread(4)
+  return o
 end
 
-function PlayerHand:move_y(dy)
-  self.x, self.y, cols, len = world:move(self, self.x, self.y + dy)
-end
 
 function love.load(dt)
   -- Set Initial Background Color
@@ -128,10 +151,12 @@ function love.load(dt)
   hands = {}
   starting = 100
   for i=1, 5 do
-    jeds[i] = JedMonster:new()
-    jeds[i].y = starting
-    hands[i] = JedHand:new()
-    hands[i].y = starting
+    local jed = JedMonster:new()
+    jed.y = starting
+    jeds[i] = jed
+    local hand = JedHand:new()
+    hand.y = starting
+    hands[i] = hand
     starting = starting - 200
     world:add(jeds[i], jeds[i].x, jeds[i].y, jeds[i].img:getWidth(), jeds[i].img:getHeight())
     world:add(hands[i], hands[i].x, hands[i].y, hands[i].img:getWidth(), hands[i].img:getHeight())
@@ -141,20 +166,9 @@ function love.load(dt)
   windowHeight = love.graphics.getHeight()
 
   -- Jed Particle System
-  local img = love.graphics.newImage('assets/jed.jpeg')
 
-  emitter = love.graphics.newParticleSystem(img, 32)
-  emitter:setDirection(-1.6)
-  emitter:setAreaSpread("none",0,0)
-  emitter:setEmissionRate(10)
-  emitter:setLinearAcceleration(-500, 10000, 500, 0)
-  emitter:setParticleLifetime(3, 3)
-  emitter:setSpeed(3000, 0)
-  emitter:setSpread(2)
-  emitter:setOffset(16, 16)
-  emitter:setSizes(1)
-  emitter:setSizeVariation(0)
-  emitter:setColors(255, 255, 255, 255, 255, 255, 255, 0)
+  -- Load Sound Effects
+  slap = love.audio.newSource("assets/slap.mp3", "static")
 end
 
 function love.draw(dt)
@@ -175,35 +189,35 @@ function love.draw(dt)
   love.graphics.draw(player_hand.img, player_hand.x, player_hand.y)
 
   -- Draw Jed Particles
-  love.graphics.draw(emitter, love.graphics.getWidth() * 0.5, love.graphics.getHeight() * 0.5, 0, 0.1, 0.1)
+  for i, emitter in ipairs(emitters) do
+    love.graphics.draw(emitter.emitter, emitter.x, emitter.y, 0, 0.1, 0.1)
+    print(i, emitter)
+    if not emitter.emitter:isActive() then
+      table.remove(emitters, i)
+    end
+  end
 end
 
 function love.update(dt)
-  x, y, cols, len = world:move(player_hand, player_hand.x, player_hand.y)
-  if len > 0 then
-    --print(("player_hand collision: %d"):format(len))
-  end
-
   -- Update the Player Position
   if love.keyboard.isDown('w', 'up') then
-    player:move_y(-(player.speed * dt))
-    player_hand:move_y(-(player_hand.speed * dt))
+    player:move(0, -(player.speed * dt))
+    player_hand:move(0, -(player_hand.speed * dt))
   elseif love.keyboard.isDown('s', 'down') then
-    player:move_y(player.speed * dt)
-    player_hand:move_y(player_hand.speed * dt)
+    player:move(0, player.speed * dt)
+    player_hand:move(0, player_hand.speed * dt)
   end
 
   -- Start High Five
   if love.keyboard.isDown('space') then
     if player_hand.x_velocity == 0 then
-      print('jump')
       player_hand.x_velocity = HIGH_FIVE_THRUST
     end
   end
 
   -- Update High Five
   if player_hand.x_velocity ~= 0 then
-    player_hand:move_x(player_hand.x_velocity * dt)
+    player_hand:move(player_hand.x_velocity * dt, 0)
     player_hand.x_velocity = player_hand.x_velocity - (GRAVITY * dt)
   end
 
@@ -214,7 +228,7 @@ function love.update(dt)
 
   -- Update the position of the Jeds
   for _, jed in ipairs(jeds) do
-    jed:move_y(jed.speed * dt)
+    jed:move(0, jed.speed * dt)
 
     if jed.y > 600 then
       jed.y = -400
@@ -225,19 +239,18 @@ function love.update(dt)
 
   -- Update the position of the Jed Hands
   for _, hand in ipairs(hands) do
-    hand:move_y(hand.speed * dt)
+    hand:move(0, hand.speed * dt)
 
     -- Make them high five maybe
     if hand.x_velocity == 0 then
       if math.random(10) % 2 == 0 then
         hand.x_velocity = -HIGH_FIVE_THRUST
-        print(hand.x_velocity)
       end
     end
 
     -- Update High Five
     if hand.x_velocity ~= 0 then
-      hand:move_x(hand.x_velocity * dt)
+      hand:move(hand.x_velocity * dt, 0)
       hand.x_velocity = hand.x_velocity + (GRAVITY * dt)
     end
 
@@ -253,5 +266,7 @@ function love.update(dt)
   end
 
   -- Update Jed Particles
-  emitter:update(dt)
+  for _, emitter in ipairs(emitters) do
+    emitter.emitter:update(dt)
+  end
 end
